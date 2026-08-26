@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>陣中掲示板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-void:#15130f;
+  --bg-command:#211d18;
+  --bg-command-hi:#2b2620;
+  --paper:#f6efdf;
+  --paper-edge:#e6d9bb;
+  --ink:#2b2620;
+  --muted:#948a76;
+  --muted-2:#6f6553;
+  --vermillion:#b23b2c;
+  --vermillion-soft:rgba(178,59,44,0.16);
+  --gold:#c79a44;
+  --gold-soft:rgba(199,154,68,0.16);
+  --border:rgba(255,255,255,0.08);
+  --font-display:'Shippori Mincho',serif;
+  --font-ui:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:
+    radial-gradient(ellipse at 20% -10%, rgba(199,154,68,0.08), transparent 55%),
+    var(--bg-void);
+  color:var(--muted);
+  font-family:var(--font-ui);
+  -webkit-font-smoothing:antialiased;
+}
+#app{display:flex;flex-direction:column;height:100vh;}
+
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 20px;
+  background:var(--bg-command);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-seal{
+  width:34px;height:34px;border-radius:4px;
+  background:linear-gradient(160deg,var(--vermillion),#8c2c20);
+  color:#f6efdf;font-family:var(--font-display);font-weight:700;font-size:17px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 6px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.15);
+  flex-shrink:0;
+}
+.brand-text h1{
+  font-family:var(--font-display);font-weight:700;
+  font-size:19px;color:#efe6d2;margin:0;letter-spacing:.02em;
+}
+.brand-text p{margin:1px 0 0;font-size:11px;color:var(--muted-2);letter-spacing:.08em;}
+.topbar-actions{display:flex;gap:8px;}
+
+.btn{
+  font-family:var(--font-ui);
+  border:1px solid var(--border);
+  background:var(--bg-command-hi);
+  color:#e7ddc7;
+  padding:8px 14px;border-radius:5px;
+  font-size:13px;cursor:pointer;
+  transition:background .15s, border-color .15s, opacity .15s;
+  white-space:nowrap;
+}
+.btn:hover{background:#39322a;}
+.btn-primary{background:linear-gradient(160deg,var(--gold),#a67e34);color:#20180a;border-color:transparent;font-weight:700;}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-ghost{background:transparent;}
+.btn-danger-ghost{background:transparent;color:#d98d80;border-color:rgba(178,59,44,0.4);}
+.btn-danger-ghost:hover{background:var(--vermillion-soft);}
+.btn-danger{background:var(--vermillion);color:#fff2ee;border-color:transparent;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+
+.layout{flex:1;display:flex;min-height:0;}
+.sidebar{
+  width:290px;flex-shrink:0;
+  border-right:1px solid var(--border);
+  background:var(--bg-command);
+  overflow-y:auto;
+  padding:12px;
+}
+.post-list{display:flex;flex-direction:column;gap:8px;}
+.post-card{
+  background:var(--bg-command-hi);
+  border:1px solid var(--border);
+  border-radius:6px;
+  padding:10px 12px;
+  cursor:pointer;
+  position:relative;
+  transition:border-color .15s, background .15s;
+}
+.post-card:hover{border-color:rgba(199,154,68,0.4);}
+.post-card.active{border-color:var(--gold);background:#332c20;}
+.post-card-title{
+  font-size:13.5px;color:#eee3cb;font-weight:500;
+  padding-right:22px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.post-card-title:empty::before{content:"(無題)";color:var(--muted-2);}
+.post-card-meta{font-size:11px;color:var(--muted-2);margin-top:4px;}
+.post-card-seal{
+  position:absolute;top:8px;right:8px;
+  width:16px;height:16px;border-radius:50%;
+  background:var(--vermillion);color:#fbe9e4;
+  font-size:9px;line-height:16px;text-align:center;
+  font-family:var(--font-display);font-weight:700;
+}
+.empty-state{
+  color:var(--muted-2);font-size:12.5px;text-align:center;
+  padding:30px 10px;line-height:1.8;
+}
+
+.editor-pane{flex:1;min-width:0;position:relative;overflow-y:auto;padding:28px;display:flex;justify-content:center;}
+.no-selection{
+  margin-top:10vh;text-align:center;color:var(--muted-2);
+}
+.no-selection-mark{font-size:28px;margin-bottom:10px;opacity:.5;}
+.no-selection p{font-size:13px;line-height:1.9;}
+
+.post-editor{
+  width:100%;max-width:720px;
+  background:var(--paper);
+  color:var(--ink);
+  border-radius:3px;
+  box-shadow:0 12px 40px rgba(0,0,0,0.45), 0 0 0 1px var(--paper-edge);
+  padding:26px 30px 22px;
+  position:relative;
+}
+.editor-meta{
+  display:flex;align-items:center;gap:10px;
+  margin-bottom:10px;flex-wrap:wrap;
+}
+.author-input{
+  font-family:var(--font-ui);font-size:12px;color:var(--muted-2);
+  border:none;border-bottom:1px dashed var(--paper-edge);
+  background:transparent;padding:2px 0;width:130px;
+}
+.author-input:focus{outline:none;border-color:var(--gold);}
+.timestamp-label{font-size:11px;color:var(--muted-2);}
+.editor-meta-actions{margin-left:auto;display:flex;gap:8px;}
+.editor-meta-actions .btn{padding:5px 10px;font-size:12px;color:var(--ink);border-color:var(--paper-edge);}
+.editor-meta-actions .btn-ghost:hover{background:rgba(43,38,32,0.06);}
+.editor-meta-actions .btn.is-active{background:var(--vermillion);color:#fff;border-color:transparent;}
+
+.title-input{
+  width:100%;border:none;background:transparent;
+  font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--ink);
+  padding:4px 0 10px;border-bottom:1px solid var(--paper-edge);margin-bottom:14px;
+}
+.title-input::placeholder{color:#b4a888;font-weight:500;}
+.title-input:focus{outline:none;}
+
+.toolbar{
+  display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;
+  padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--paper-edge);
+}
+.tb-group{display:flex;gap:3px;padding-right:8px;margin-right:5px;border-right:1px solid var(--paper-edge);}
+.tb-group:last-child{border-right:none;}
+.tb-btn{
+  border:1px solid transparent;background:transparent;color:var(--ink);
+  width:28px;height:26px;border-radius:4px;font-size:12.5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-ui);
+}
+.tb-btn:hover{background:rgba(43,38,32,0.08);}
+.tb-btn.wide{width:auto;padding:0 8px;}
+.tb-btn[data-cmd="bold"]{font-weight:700;}
+.tb-btn[data-cmd="italic"]{font-style:italic;}
+.tb-btn[data-cmd="underline"]{text-decoration:underline;}
+.tb-btn[data-cmd="strikeThrough"]{text-decoration:line-through;}
+.swatch{
+  width:19px;height:19px;border-radius:50%;cursor:pointer;
+  border:1px solid rgba(43,38,32,0.25);
+}
+.swatch.none{
+  background:
+    linear-gradient(45deg, transparent 46%, var(--vermillion) 48%, var(--vermillion) 52%, transparent 54%),
+    #fff;
+}
+.toolbar.disabled{opacity:.35;pointer-events:none;}
+
+.editor-body{
+  min-height:340px;font-size:14.5px;line-height:1.85;color:var(--ink);
+  outline:none;
+}
+.editor-body:empty::before{content:"作戦の内容をここに記入…（画像は貼り付け／ドラッグ＆ドロップ可）";color:#b4a888;}
+.editor-body h2{font-family:var(--font-display);font-size:19px;margin:18px 0 8px;color:#3a2f1e;}
+.editor-body h3{font-family:var(--font-display);font-size:16px;margin:14px 0 6px;color:#3a2f1e;}
+.editor-body blockquote{
+  margin:10px 0;padding:6px 14px;border-left:3px solid var(--gold);
+  background:rgba(199,154,68,0.08);color:#4a4230;
+}
+.editor-body img{max-width:100%;border-radius:3px;margin:8px 0;display:block;box-shadow:0 2px 8px rgba(0,0,0,0.15);}
+.editor-body hr{border:none;border-top:1px dashed var(--paper-edge);margin:16px 0;}
+.editor-body a{color:var(--vermillion);}
+.editor-body ul,.editor-body ol{padding-left:22px;}
+
+.save-status{
+  text-align:right;font-size:11px;color:var(--muted-2);margin-top:12px;
+}
+
+.locked-note{
+  display:flex;align-items:center;gap:6px;
+  font-size:11.5px;color:var(--vermillion);margin-bottom:2px;
+}
+.locked-seal-big{
+  position:absolute;top:20px;right:26px;
+  width:58px;height:58px;border-radius:6px;
+  border:2.5px solid var(--vermillion);color:var(--vermillion);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-display);font-weight:700;font-size:24px;
+  transform:rotate(-14deg);opacity:.85;
+  pointer-events:none;
+}
+
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(10,8,5,0.6);
+  display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;
+}
+.modal-overlay[hidden]{display:none !important;}
+.modal-box{
+  background:var(--paper);color:var(--ink);border-radius:6px;
+  padding:20px 22px;max-width:340px;width:100%;
+  box-shadow:0 20px 50px rgba(0,0,0,0.5);
+}
+.modal-box p{font-size:13.5px;line-height:1.7;margin:0 0 16px;}
+.modal-box input{
+  width:100%;padding:8px 10px;border:1px solid var(--paper-edge);border-radius:4px;
+  font-size:13px;margin-bottom:16px;font-family:var(--font-ui);
+}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;}
+.modal-actions .btn{color:var(--ink);border-color:var(--paper-edge);}
+
+.config-warning{
+  background:var(--vermillion);color:#fff2ee;font-size:12.5px;
+  text-align:center;padding:8px 12px;flex-shrink:0;
+}
+@media (max-width:780px){
+  .layout{flex-direction:column;}
+  .sidebar{width:100%;max-height:34vh;border-right:none;border-bottom:1px solid var(--border);}
+  .editor-pane{padding:16px;}
+  .post-editor{padding:18px 16px 16px;}
+  .locked-seal-big{width:44px;height:44px;font-size:18px;top:12px;right:14px;}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-seal">陣</div>
+      <div class="brand-text">
+        <h1>陣中掲示板</h1>
+        <p>作戦共有・一時ボード</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="newPostBtn" class="btn btn-primary">＋ 新規投稿</button>
+      <button id="resetBtn" class="btn btn-ghost">全消去</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div id="postList" class="post-list"></div>
+      <div id="emptyState" class="empty-state" hidden>まだ投稿がありません。<br>「＋ 新規投稿」から作戦を書き込みましょう。</div>
+    </aside>
+
+    <main class="editor-pane">
+      <div id="noSelection" class="no-selection">
+        <div class="no-selection-mark">☰</div>
+        <p>左の一覧から投稿を選ぶか、<br>「＋ 新規投稿」で作戦を書き始めてください。</p>
+      </div>
+
+      <div id="postEditor" class="post-editor" hidden>
+        <div id="lockedSealBig" class="locked-seal-big" hidden>封</div>
+        <div class="editor-meta">
+          <input id="authorInput" class="author-input" placeholder="投稿者名" />
+          <span id="timestampLabel" class="timestamp-label"></span>
+          <div class="editor-meta-actions">
+            <button id="lockBtn" class="btn btn-ghost">🔒 ロック</button>
+            <button id="deleteBtn" class="btn btn-danger-ghost">削除</button>
+          </div>
+        </div>
+
+        <input id="titleInput" class="title-input" placeholder="タイトル（例：手取川 第3陣 作戦案）" />
+
+        <div id="toolbar" class="toolbar">
+          <div class="tb-group">
+            <button class="tb-btn" data-cmd="bold" title="太字">B</button>
+            <button class="tb-btn" data-cmd="italic" title="斜体">I</button>
+            <button class="tb-btn" data-cmd="underline" title="下線">U</button>
+            <button class="tb-btn" data-cmd="strikeThrough" title="取り消し線">S</button>
+          </div>
+          <div class="tb-group">
+            <button class="tb-btn wide" data-block="H2" title="見出し（大）">見出大</button>
+            <button class="tb-btn wide" data-block="H3" title="見出し（小）">見出小</button>
+            <button class="tb-btn wide" data-block="P" title="本文に戻す">本文</button>
+          </div>
+          <div class="tb-group">
+            <button class="tb-btn" data-cmd="insertUnorderedList" title="箇条書き">•≡</button>
+            <button class="tb-btn" data-cmd="insertOrderedList" title="番号リスト">1≡</button>
+            <button class="tb-btn wide" data-block="BLOCKQUOTE" title="引用">❝</button>
+            <button class="tb-btn" data-cmd="insertHorizontalRule" title="区切り線">―</button>
+          </div>
+          <div class="tb-group">
+            <span class="swatch none" data-hi="transparent" title="ハイライトなし"></span>
+            <span class="swatch" data-hi="#fdf08a" style="background:#fdf08a" title="ハイライト：黄"></span>
+            <span class="swatch" data-hi="#bdf2c9" style="background:#bdf2c9" title="ハイライト：緑"></span>
+            <span class="swatch" data-hi="#f8cfe0" style="background:#f8cfe0" title="ハイライト：桃"></span>
+            <span class="swatch" data-hi="#c3dcf7" style="background:#c3dcf7" title="ハイライト：青"></span>
+          </div>
+          <div class="tb-group">
+            <span class="swatch" data-fc="#2b2620" style="background:#2b2620" title="文字色：既定"></span>
+            <span class="swatch" data-fc="#b23b2c" style="background:#b23b2c" title="文字色：朱"></span>
+            <span class="swatch" data-fc="#2f5da3" style="background:#2f5da3" title="文字色：青"></span>
+            <span class="swatch" data-fc="#2f7a4f" style="background:#2f7a4f" title="文字色：緑"></span>
+            <span class="swatch" data-fc="#a8802e" style="background:#a8802e" title="文字色：金"></span>
+          </div>
+          <div class="tb-group">
+            <button class="tb-btn wide" id="imageBtn" title="画像を追加">画像</button>
+            <button class="tb-btn wide" id="linkBtn" title="リンクを追加">リンク</button>
+            <button class="tb-btn wide" id="clearFormatBtn" title="書式をクリア">クリア</button>
+          </div>
+        </div>
+
+        <div id="editorBody" class="editor-body" contenteditable="true"></div>
+        <div class="save-status" id="saveStatus">保存済み</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="confirmModal" class="modal-overlay" hidden>
+  <div class="modal-box">
+    <p id="confirmMessage"></p>
+    <div class="modal-actions">
+      <button id="confirmCancel" class="btn btn-ghost">キャンセル</button>
+      <button id="confirmOk" class="btn btn-danger">実行</button>
+    </div>
+  </div>
+</div>
+
+<div id="linkModal" class="modal-overlay" hidden>
+  <div class="modal-box">
+    <p>リンク先のURLを入力してください。</p>
+    <input id="linkUrlInput" type="text" placeholder="https://..." />
+    <div class="modal-actions">
+      <button id="linkCancel" class="btn btn-ghost">キャンセル</button>
+      <button id="linkOk" class="btn btn-primary">追加</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="imageFileInput" accept="image/*" hidden />
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, doc, updateDoc, deleteDoc,
+  onSnapshot, query, orderBy, serverTimestamp, getDocs, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+/* ============================================================
+   ▼▼▼ ここを自分のFirebaseプロジェクトの値に書き換えてください ▼▼▼
+   Firebaseコンソール → プロジェクト設定 → 「アプリを追加」(</>アイコン)
+   で表示される firebaseConfig をそのまま貼り付けます。
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyBQPh7gaSv_7jv35f5nDipod_guptYxbwg",
+  authDomain: "shitarahara.firebaseapp.com",
+  projectId: "shitarahara",
+  storageBucket: "shitarahara.firebasestorage.app",
+  messagingSenderId: "1004946235075",
+  appId: "1:1004946235075:web:0b3f8e7aa2b542a7cb4c76"
+};
+/* ▲▲▲ ここまで ▲▲▲ */
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const postsCol = collection(db, 'posts');
+
+(function(){
+  const NAME_KEY = 'jinchu-my-name'; // 通常のWebサイトとして動くため localStorage を利用
+
+  let posts = [];          // Firestoreからのローカルキャッシュ
+  let currentId = null;
+  let pendingUpdate = {};
+  let saveTimer = null;
+  let lastLocalEditAt = 0;
+  let confirmCallback = null;
+
+  const postList = document.getElementById('postList');
+  const emptyState = document.getElementById('emptyState');
+  const noSelection = document.getElementById('noSelection');
+  const postEditor = document.getElementById('postEditor');
+  const authorInput = document.getElementById('authorInput');
+  const timestampLabel = document.getElementById('timestampLabel');
+  const titleInput = document.getElementById('titleInput');
+  const editorBody = document.getElementById('editorBody');
+  const toolbar = document.getElementById('toolbar');
+  const saveStatus = document.getElementById('saveStatus');
+  const lockBtn = document.getElementById('lockBtn');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const lockedSealBig = document.getElementById('lockedSealBig');
+  const imageFileInput = document.getElementById('imageFileInput');
+
+  function fmtTime(ts){
+    try{
+      const d = (ts && ts.toDate) ? ts.toDate() : new Date(ts);
+      return d.toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    }catch(e){ return ''; }
+  }
+  function toMillis(ts){
+    if(!ts) return 0;
+    if(ts.toMillis) return ts.toMillis();
+    if(ts.toDate) return ts.toDate().getTime();
+    return ts;
+  }
+
+  function loadMyName(){
+    try{ return localStorage.getItem(NAME_KEY) || ''; }catch(e){ return ''; }
+  }
+  function saveMyName(name){
+    try{ localStorage.setItem(NAME_KEY, name); }catch(e){}
+  }
+
+  // 変更をまとめてFirestoreへ送る（連続入力を1回にまとめる）
+  function scheduleUpdate(partial){
+    lastLocalEditAt = Date.now();
+    Object.assign(pendingUpdate, partial);
+    saveStatus.textContent = '編集中…';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushUpdate, 700);
+  }
+  async function flushUpdate(){
+    if(!currentId || Object.keys(pendingUpdate).length === 0) return;
+    const toSend = { ...pendingUpdate, updatedAt: serverTimestamp() };
+    pendingUpdate = {};
+    try{
+      await updateDoc(doc(db,'posts',currentId), toSend);
+      saveStatus.textContent = '保存済み ・ ' + fmtTime(Date.now());
+    }catch(e){
+      saveStatus.textContent = '保存に失敗しました（通信・設定を確認してください）';
+    }
+  }
+
+  function renderList(){
+    // Firestoreクエリ側で既に更新日時の降順に並んでいる
+    postList.innerHTML = '';
+    emptyState.hidden = posts.length !== 0;
+    posts.forEach(p=>{
+      const card = document.createElement('div');
+      card.className = 'post-card' + (p.id === currentId ? ' active' : '');
+      card.innerHTML =
+        '<div class="post-card-title"></div>' +
+        '<div class="post-card-meta"></div>' +
+        (p.locked ? '<div class="post-card-seal">封</div>' : '');
+      card.querySelector('.post-card-title').textContent = p.title || '';
+      card.querySelector('.post-card-meta').textContent =
+        (p.authorName ? p.authorName + ' ・ ' : '') + fmtTime(p.updatedAt);
+      card.addEventListener('click', ()=> selectPost(p.id));
+      postList.appendChild(card);
+    });
+  }
+
+  function selectPost(id){
+    currentId = id;
+    pendingUpdate = {};
+    const p = posts.find(x=>x.id===id);
+    if(!p) return;
+    noSelection.hidden = true;
+    postEditor.hidden = false;
+    authorInput.value = p.authorName || authorInput.value;
+    titleInput.value = p.title || '';
+    editorBody.innerHTML = p.bodyHtml || '';
+    timestampLabel.textContent = '更新: ' + fmtTime(p.updatedAt);
+    applyLockUI(p.locked);
+    renderList();
+  }
+
+  // 他の人の編集がリアルタイムで届いたときに、今開いている投稿へ反映する
+  function maybeRefreshEditor(p){
+    applyLockUI(p.locked); // ロック状態は入力中でも即反映
+    const activelyTyping = Date.now() - lastLocalEditAt < 1200;
+    if(activelyTyping) return; // 自分が今まさに打っている間は上書きしない
+    if(titleInput.value !== (p.title || '')) titleInput.value = p.title || '';
+    if(editorBody.innerHTML !== (p.bodyHtml || '')) editorBody.innerHTML = p.bodyHtml || '';
+    timestampLabel.textContent = '更新: ' + fmtTime(p.updatedAt);
+  }
+
+  function applyLockUI(locked){
+    titleInput.readOnly = locked;
+    editorBody.contentEditable = locked ? 'false' : 'true';
+    toolbar.classList.toggle('disabled', locked);
+    lockedSealBig.hidden = !locked;
+    lockBtn.textContent = locked ? '🔓 ロック解除' : '🔒 ロック';
+    lockBtn.classList.toggle('is-active', locked);
+  }
+
+  function currentPost(){ return posts.find(p=>p.id===currentId); }
+
+  async function newPost(){
+    const authorName = authorInput.value || '';
+    try{
+      const ref = await addDoc(postsCol, {
+        title:'', authorName, bodyHtml:'',
+        createdAt: serverTimestamp(), updatedAt: serverTimestamp(), locked:false
+      });
+      currentId = ref.id;
+      noSelection.hidden = true;
+      postEditor.hidden = false;
+      titleInput.value = '';
+      titleInput.readOnly = false;
+      editorBody.innerHTML = '';
+      editorBody.contentEditable = 'true';
+      toolbar.classList.remove('disabled');
+      lockedSealBig.hidden = true;
+      lockBtn.textContent = '🔒 ロック';
+      lockBtn.classList.remove('is-active');
+      titleInput.focus();
+    }catch(e){
+      saveStatus.textContent = '投稿の作成に失敗しました（Firebase設定を確認してください）';
+    }
+  }
+
+  function showConfirm(message, onOk){
+    document.getElementById('confirmMessage').textContent = message;
+    confirmCallback = onOk;
+    document.getElementById('confirmModal').hidden = false;
+  }
+
+  document.getElementById('confirmCancel').addEventListener('click', ()=>{
+    document.getElementById('confirmModal').hidden = true;
+    confirmCallback = null;
+  });
+  document.getElementById('confirmOk').addEventListener('click', ()=>{
+    document.getElementById('confirmModal').hidden = true;
+    if(confirmCallback) confirmCallback();
+    confirmCallback = null;
+  });
+
+  document.getElementById('newPostBtn').addEventListener('click', newPost);
+
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    showConfirm('すべての投稿を削除します。この操作は元に戻せません。よろしいですか？', async ()=>{
+      try{
+        const snap = await getDocs(postsCol);
+        const batch = writeBatch(db);
+        snap.forEach(d=> batch.delete(d.ref));
+        await batch.commit();
+      }catch(e){
+        saveStatus.textContent = '削除に失敗しました';
+      }
+      currentId = null;
+      postEditor.hidden = true;
+      noSelection.hidden = false;
+    });
+  });
+
+  deleteBtn.addEventListener('click', ()=>{
+    if(!currentId) return;
+    const idToDelete = currentId;
+    showConfirm('この投稿を削除します。よろしいですか？', async ()=>{
+      try{ await deleteDoc(doc(db,'posts',idToDelete)); }catch(e){}
+      currentId = null;
+      postEditor.hidden = true;
+      noSelection.hidden = false;
+    });
+  });
+
+  lockBtn.addEventListener('click', async ()=>{
+    const p = currentPost();
+    if(!p) return;
+    const newLocked = !p.locked;
+    applyLockUI(newLocked); // 即座に見た目へ反映
+    try{
+      await updateDoc(doc(db,'posts',currentId), { locked: newLocked, updatedAt: serverTimestamp() });
+    }catch(e){
+      applyLockUI(p.locked); // 失敗したら元に戻す
+      saveStatus.textContent = 'ロック操作に失敗しました';
+    }
+  });
+
+  authorInput.addEventListener('input', ()=>{
+    saveMyName(authorInput.value);
+    if(currentId) scheduleUpdate({ authorName: authorInput.value });
+  });
+  titleInput.addEventListener('input', ()=>{
+    if(!currentId) return;
+    scheduleUpdate({ title: titleInput.value });
+  });
+  editorBody.addEventListener('input', ()=>{
+    if(!currentId) return;
+    scheduleUpdate({ bodyHtml: editorBody.innerHTML });
+  });
+
+  // Toolbar
+  toolbar.addEventListener('mousedown', (e)=>{
+    if(e.target.closest('.tb-btn') || e.target.closest('.swatch')) e.preventDefault();
+  });
+  toolbar.querySelectorAll('.tb-btn[data-cmd]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      editorBody.focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+      editorBody.dispatchEvent(new Event('input'));
+    });
+  });
+  toolbar.querySelectorAll('.tb-btn[data-block]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      editorBody.focus();
+      document.execCommand('formatBlock', false, btn.dataset.block);
+      editorBody.dispatchEvent(new Event('input'));
+    });
+  });
+  toolbar.querySelectorAll('.swatch[data-hi]').forEach(sw=>{
+    sw.addEventListener('click', ()=>{
+      editorBody.focus();
+      document.execCommand('hiliteColor', false, sw.dataset.hi);
+      editorBody.dispatchEvent(new Event('input'));
+    });
+  });
+  toolbar.querySelectorAll('.swatch[data-fc]').forEach(sw=>{
+    sw.addEventListener('click', ()=>{
+      editorBody.focus();
+      document.execCommand('foreColor', false, sw.dataset.fc);
+      editorBody.dispatchEvent(new Event('input'));
+    });
+  });
+  document.getElementById('clearFormatBtn').addEventListener('click', ()=>{
+    editorBody.focus();
+    document.execCommand('removeFormat', false, null);
+    document.execCommand('hiliteColor', false, 'transparent');
+    editorBody.dispatchEvent(new Event('input'));
+  });
+
+  // Link modal
+  const linkModal = document.getElementById('linkModal');
+  const linkUrlInput = document.getElementById('linkUrlInput');
+  let savedRange = null;
+  document.getElementById('linkBtn').addEventListener('click', ()=>{
+    const sel = window.getSelection();
+    savedRange = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    linkUrlInput.value = '';
+    linkModal.hidden = false;
+    setTimeout(()=>linkUrlInput.focus(), 30);
+  });
+  document.getElementById('linkCancel').addEventListener('click', ()=> linkModal.hidden = true);
+  document.getElementById('linkOk').addEventListener('click', ()=>{
+    const url = linkUrlInput.value.trim();
+    linkModal.hidden = true;
+    if(!url) return;
+    editorBody.focus();
+    if(savedRange){
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+    document.execCommand('createLink', false, url);
+    editorBody.dispatchEvent(new Event('input'));
+  });
+
+  // Image insert
+  function insertImageFile(file){
+    if(!file || file.type.indexOf('image') === -1) return;
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      editorBody.focus();
+      document.execCommand('insertImage', false, e.target.result);
+      editorBody.dispatchEvent(new Event('input'));
+    };
+    reader.readAsDataURL(file);
+  }
+  document.getElementById('imageBtn').addEventListener('click', ()=> imageFileInput.click());
+  imageFileInput.addEventListener('change', (e)=>{
+    if(e.target.files && e.target.files[0]) insertImageFile(e.target.files[0]);
+    imageFileInput.value = '';
+  });
+  editorBody.addEventListener('paste', (e)=>{
+    const items = e.clipboardData && e.clipboardData.items;
+    if(items){
+      for(const item of items){
+        if(item.type.indexOf('image') !== -1){
+          e.preventDefault();
+          insertImageFile(item.getAsFile());
+          return;
+        }
+      }
+    }
+  });
+  editorBody.addEventListener('dragover', (e)=> e.preventDefault());
+  editorBody.addEventListener('drop', (e)=>{
+    if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]){
+      e.preventDefault();
+      insertImageFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  // Init
+  authorInput.value = loadMyName();
+  onSnapshot(query(postsCol, orderBy('updatedAt','desc')), (snapshot)=>{
+    posts = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
+    renderList();
+    if(currentId){
+      const p = posts.find(x=>x.id===currentId);
+      if(p) maybeRefreshEditor(p);
+      else {
+        currentId = null;
+        postEditor.hidden = true;
+        noSelection.hidden = false;
+      }
+    }
+  }, (err)=>{
+    saveStatus.textContent = 'データの読み込みに失敗しました（Firebase設定を確認してください）';
+  });
+})();
+</script>
+</body>
+</html>
