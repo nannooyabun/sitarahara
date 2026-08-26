@@ -405,6 +405,7 @@ const postsCol = collection(db, 'posts');
 
 (function(){
   const NAME_KEY = 'jinchu-my-name'; // 通常のWebサイトとして動くため localStorage を利用
+  const LAST_POST_KEY = 'jinchu-last-post-id'; // 次回訪問時に前回開いていた投稿を復元するため
 
   let posts = [];          // Firestoreからのローカルキャッシュ
   let currentId = null;
@@ -412,6 +413,7 @@ const postsCol = collection(db, 'posts');
   let saveTimer = null;
   let lastLocalEditAt = 0;
   let confirmCallback = null;
+  let hasRestoredSelection = false;
 
   const postList = document.getElementById('postList');
   const emptyState = document.getElementById('emptyState');
@@ -459,6 +461,16 @@ const postsCol = collection(db, 'posts');
     try{ localStorage.setItem(NAME_KEY, name); }catch(e){}
   }
 
+  function loadLastPostId(){
+    try{ return localStorage.getItem(LAST_POST_KEY) || null; }catch(e){ return null; }
+  }
+  function saveLastPostId(id){
+    try{
+      if(id) localStorage.setItem(LAST_POST_KEY, id);
+      else localStorage.removeItem(LAST_POST_KEY);
+    }catch(e){}
+  }
+
   // 変更をまとめてFirestoreへ送る（連続入力を1回にまとめる）
   function scheduleUpdate(partial){
     lastLocalEditAt = Date.now();
@@ -503,6 +515,7 @@ const postsCol = collection(db, 'posts');
     pendingUpdate = {};
     unlockModal.hidden = true;
     unlockTargetId = null;
+    saveLastPostId(id);
     const p = posts.find(x=>x.id===id);
     if(!p) return;
     noSelection.hidden = true;
@@ -544,6 +557,7 @@ const postsCol = collection(db, 'posts');
         createdAt: serverTimestamp(), updatedAt: serverTimestamp(), locked:false
       });
       currentId = ref.id;
+      saveLastPostId(currentId);
       noSelection.hidden = true;
       postEditor.hidden = false;
       titleInput.value = '';
@@ -590,6 +604,7 @@ const postsCol = collection(db, 'posts');
         saveStatus.textContent = '削除に失敗しました';
       }
       currentId = null;
+      saveLastPostId(null);
       postEditor.hidden = true;
       noSelection.hidden = false;
     });
@@ -601,6 +616,7 @@ const postsCol = collection(db, 'posts');
     showConfirm('この投稿を削除します。よろしいですか？', async ()=>{
       try{ await deleteDoc(doc(db,'posts',idToDelete)); }catch(e){}
       currentId = null;
+      saveLastPostId(null);
       postEditor.hidden = true;
       noSelection.hidden = false;
     });
@@ -833,11 +849,19 @@ const postsCol = collection(db, 'posts');
   onSnapshot(query(postsCol, orderBy('updatedAt','desc')), (snapshot)=>{
     posts = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
     renderList();
+    if(!hasRestoredSelection){
+      hasRestoredSelection = true;
+      const lastId = loadLastPostId();
+      if(!currentId && lastId && posts.some(p=>p.id===lastId)){
+        selectPost(lastId);
+      }
+    }
     if(currentId){
       const p = posts.find(x=>x.id===currentId);
       if(p) maybeRefreshEditor(p);
       else {
         currentId = null;
+        saveLastPostId(null);
         postEditor.hidden = true;
         noSelection.hidden = false;
       }
