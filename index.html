@@ -255,6 +255,7 @@ body{
 </head>
 <body>
 <div id="app">
+  <div id="globalError" class="config-warning" hidden></div>
   <header class="topbar">
     <div class="brand">
       <div class="brand-seal">陣</div>
@@ -432,6 +433,12 @@ const postsCol = collection(db, 'posts');
   const unlockPassInput = document.getElementById('unlockPassInput');
   const unlockError = document.getElementById('unlockError');
   let unlockTargetId = null;
+  const globalError = document.getElementById('globalError');
+
+  function showGlobalError(msg){
+    globalError.textContent = msg;
+    globalError.hidden = false;
+  }
 
   function fmtTime(ts){
     try{
@@ -551,6 +558,7 @@ const postsCol = collection(db, 'posts');
       titleInput.focus();
     }catch(e){
       saveStatus.textContent = '投稿の作成に失敗しました（Firebase設定を確認してください）';
+      showGlobalError('投稿の作成に失敗しました: ' + (e && e.message ? e.message : e));
     }
   }
 
@@ -794,6 +802,7 @@ const postsCol = collection(db, 'posts');
     }
   }, (err)=>{
     saveStatus.textContent = 'データの読み込みに失敗しました（Firebase設定を確認してください）';
+    showGlobalError('データの読み込みに失敗しました: ' + (err && err.message ? err.message : err));
   });
 })();
 </script>
