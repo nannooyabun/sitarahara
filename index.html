@@ -162,6 +162,7 @@ body{
 .toolbar{
   display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;
   padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--paper-edge);
+  position:sticky;top:0;z-index:2;background:var(--paper);
 }
 .tb-group{display:flex;gap:3px;padding-right:8px;margin-right:5px;border-right:1px solid var(--paper-edge);}
 .tb-group:last-child{border-right:none;}
@@ -382,7 +383,6 @@ import {
   getFirestore, collection, addDoc, doc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy, serverTimestamp, getDocs, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-storage.js";
 
 /* ============================================================
    ▼▼▼ ここを自分のFirebaseプロジェクトの値に書き換えてください ▼▼▼
@@ -401,7 +401,6 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
-const storage = getStorage(fbApp);
 const postsCol = collection(db, 'posts');
 
 (function(){
@@ -734,8 +733,43 @@ const postsCol = collection(db, 'posts');
     editorBody.dispatchEvent(new Event('input'));
   });
 
-  // Image insert（Firebase Storageにアップロードし、URLを本文へ挿入する）
-  const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB。Firestoreの1ドキュメント1MiB上限を画像本体では消費しないための上限
+  // Image insert（Firebase Storageを使わず、ブラウザ側で圧縮してからFirestoreにBase64のまま保存する）
+  const MAX_SOURCE_BYTES = 20 * 1024 * 1024; // 20MB。あまりに大きい元ファイルは処理前に弾く
+  const TARGET_IMAGE_BYTES = 700 * 1024; // 圧縮後の目標サイズ。Firestoreの1ドキュメント1MiB上限に対して余裕を持たせる
+  const MAX_IMAGE_DIMENSION = 1280; // 長辺の上限（px）
+
+  function loadImageFromFile(file){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('画像の読み込みに失敗しました')); };
+      img.src = url;
+    });
+  }
+
+  function compressImageToDataUrl(img){
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if(w > MAX_IMAGE_DIMENSION || h > MAX_IMAGE_DIMENSION){
+      const scale = MAX_IMAGE_DIMENSION / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    let dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    for(const q of [0.6, 0.45, 0.3]){
+      if(dataUrlByteEstimate(dataUrl) <= TARGET_IMAGE_BYTES) break;
+      dataUrl = canvas.toDataURL('image/jpeg', q);
+    }
+    return dataUrl;
+  }
+
+  function dataUrlByteEstimate(dataUrl){
+    return Math.round(dataUrl.length * 0.75); // Base64は元バイナリの約4/3倍の文字数になるための概算
+  }
 
   async function insertImageFile(file){
     if(!file || file.type.indexOf('image') === -1) return;
@@ -743,22 +777,30 @@ const postsCol = collection(db, 'posts');
       saveStatus.textContent = '投稿を選択してから画像を追加してください';
       return;
     }
-    if(file.size > MAX_IMAGE_BYTES){
-      saveStatus.textContent = '画像サイズが大きすぎます（8MB以下にしてください）';
+    if(file.size > MAX_SOURCE_BYTES){
+      const msg = '画像サイズが大きすぎます（20MB以下にしてください）';
+      saveStatus.textContent = msg;
+      showGlobalError(msg);
       return;
     }
     const targetId = currentId;
-    saveStatus.textContent = '画像をアップロード中…';
+    saveStatus.textContent = '画像を処理中…';
     try{
-      const storageRef = ref(storage, `postImages/${targetId}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      if(targetId !== currentId) return; // アップロード中に別の投稿へ切り替えていた場合は挿入しない
+      const img = await loadImageFromFile(file);
+      if(targetId !== currentId) return; // 処理中に別の投稿へ切り替えていた場合は挿入しない
+      const dataUrl = compressImageToDataUrl(img);
+      if(dataUrlByteEstimate(dataUrl) > TARGET_IMAGE_BYTES){
+        const msg = '画像を圧縮しても保存できるサイズになりませんでした。別の画像をお試しください。';
+        saveStatus.textContent = msg;
+        showGlobalError(msg);
+        return;
+      }
       editorBody.focus();
-      document.execCommand('insertImage', false, url);
+      document.execCommand('insertImage', false, dataUrl);
       editorBody.dispatchEvent(new Event('input'));
     }catch(e){
-      saveStatus.textContent = '画像のアップロードに失敗しました（通信・Storage設定を確認してください）';
+      saveStatus.textContent = '画像の処理に失敗しました';
+      showGlobalError('画像の処理に失敗しました: ' + (e && e.message ? e.message : e));
     }
   }
   document.getElementById('imageBtn').addEventListener('click', ()=> imageFileInput.click());
