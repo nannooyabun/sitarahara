@@ -118,7 +118,7 @@ body{
   padding:30px 10px;line-height:1.8;
 }
 
-.editor-pane{flex:1;min-width:0;position:relative;overflow-y:auto;padding:28px;display:flex;justify-content:center;}
+.editor-pane{flex:1;min-width:0;position:relative;overflow-y:auto;padding:28px;display:flex;justify-content:center;align-items:flex-start;}
 .no-selection{
   margin-top:10vh;text-align:center;color:var(--muted-2);
 }
@@ -127,6 +127,7 @@ body{
 
 .post-editor{
   width:100%;max-width:720px;
+  min-height:100%;
   background:var(--paper);
   color:var(--ink);
   border-radius:3px;
@@ -219,6 +220,7 @@ body{
   transform:rotate(-14deg);opacity:.85;
   pointer-events:none;
 }
+.locked-seal-big[hidden]{display:none;}
 
 .modal-overlay{
   position:fixed;inset:0;background:rgba(10,8,5,0.6);
@@ -359,6 +361,18 @@ body{
   </div>
 </div>
 
+<div id="unlockModal" class="modal-overlay" hidden>
+  <div class="modal-box">
+    <p>この投稿のロックを解除するには、合言葉を入力してください。</p>
+    <input id="unlockPassInput" type="text" placeholder="合言葉" autocomplete="off" />
+    <p id="unlockError" style="display:none;color:var(--vermillion);font-size:12px;margin:-10px 0 12px;">合言葉が違います。</p>
+    <div class="modal-actions">
+      <button id="unlockCancel" class="btn btn-ghost">キャンセル</button>
+      <button id="unlockOk" class="btn btn-primary">解除</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="imageFileInput" accept="image/*" hidden />
 
 <script type="module">
@@ -367,6 +381,7 @@ import {
   getFirestore, collection, addDoc, doc, updateDoc, deleteDoc,
   onSnapshot, query, orderBy, serverTimestamp, getDocs, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-storage.js";
 
 /* ============================================================
    ▼▼▼ ここを自分のFirebaseプロジェクトの値に書き換えてください ▼▼▼
@@ -385,6 +400,7 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
+const storage = getStorage(fbApp);
 const postsCol = collection(db, 'posts');
 
 (function(){
@@ -411,6 +427,11 @@ const postsCol = collection(db, 'posts');
   const deleteBtn = document.getElementById('deleteBtn');
   const lockedSealBig = document.getElementById('lockedSealBig');
   const imageFileInput = document.getElementById('imageFileInput');
+  const UNLOCK_PASSPHRASE = 'nnnoyabun';
+  const unlockModal = document.getElementById('unlockModal');
+  const unlockPassInput = document.getElementById('unlockPassInput');
+  const unlockError = document.getElementById('unlockError');
+  let unlockTargetId = null;
 
   function fmtTime(ts){
     try{
@@ -474,6 +495,8 @@ const postsCol = collection(db, 'posts');
   function selectPost(id){
     currentId = id;
     pendingUpdate = {};
+    unlockModal.hidden = true;
+    unlockTargetId = null;
     const p = posts.find(x=>x.id===id);
     if(!p) return;
     noSelection.hidden = true;
@@ -579,14 +602,50 @@ const postsCol = collection(db, 'posts');
   lockBtn.addEventListener('click', async ()=>{
     const p = currentPost();
     if(!p) return;
-    const newLocked = !p.locked;
-    applyLockUI(newLocked); // 即座に見た目へ反映
+    if(!p.locked){
+      // ロックする場合は確認不要
+      applyLockUI(true); // 即座に見た目へ反映
+      try{
+        await updateDoc(doc(db,'posts',currentId), { locked: true, updatedAt: serverTimestamp() });
+      }catch(e){
+        applyLockUI(false); // 失敗したら元に戻す
+        saveStatus.textContent = 'ロック操作に失敗しました';
+      }
+      return;
+    }
+    // ロック解除には合言葉の入力が必要
+    unlockTargetId = currentId;
+    unlockPassInput.value = '';
+    unlockError.style.display = 'none';
+    unlockModal.hidden = false;
+    setTimeout(()=>unlockPassInput.focus(), 30);
+  });
+
+  document.getElementById('unlockCancel').addEventListener('click', ()=>{
+    unlockModal.hidden = true;
+    unlockTargetId = null;
+  });
+  document.getElementById('unlockOk').addEventListener('click', async ()=>{
+    if(unlockPassInput.value !== UNLOCK_PASSPHRASE){
+      unlockError.style.display = 'block';
+      unlockPassInput.focus();
+      return;
+    }
+    const targetId = unlockTargetId;
+    unlockModal.hidden = true;
+    unlockTargetId = null;
+    if(!targetId) return;
+    const stillViewingIt = targetId === currentId;
+    if(stillViewingIt) applyLockUI(false); // 即座に見た目へ反映
     try{
-      await updateDoc(doc(db,'posts',currentId), { locked: newLocked, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db,'posts',targetId), { locked:false, updatedAt: serverTimestamp() });
     }catch(e){
-      applyLockUI(p.locked); // 失敗したら元に戻す
+      if(stillViewingIt) applyLockUI(true); // 失敗したら元に戻す
       saveStatus.textContent = 'ロック操作に失敗しました';
     }
+  });
+  unlockPassInput.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('unlockOk').click(); }
   });
 
   authorInput.addEventListener('input', ()=>{
@@ -667,16 +726,32 @@ const postsCol = collection(db, 'posts');
     editorBody.dispatchEvent(new Event('input'));
   });
 
-  // Image insert
-  function insertImageFile(file){
+  // Image insert（Firebase Storageにアップロードし、URLを本文へ挿入する）
+  const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB。Firestoreの1ドキュメント1MiB上限を画像本体では消費しないための上限
+
+  async function insertImageFile(file){
     if(!file || file.type.indexOf('image') === -1) return;
-    const reader = new FileReader();
-    reader.onload = (e)=>{
+    if(!currentId){
+      saveStatus.textContent = '投稿を選択してから画像を追加してください';
+      return;
+    }
+    if(file.size > MAX_IMAGE_BYTES){
+      saveStatus.textContent = '画像サイズが大きすぎます（8MB以下にしてください）';
+      return;
+    }
+    const targetId = currentId;
+    saveStatus.textContent = '画像をアップロード中…';
+    try{
+      const storageRef = ref(storage, `postImages/${targetId}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      if(targetId !== currentId) return; // アップロード中に別の投稿へ切り替えていた場合は挿入しない
       editorBody.focus();
-      document.execCommand('insertImage', false, e.target.result);
+      document.execCommand('insertImage', false, url);
       editorBody.dispatchEvent(new Event('input'));
-    };
-    reader.readAsDataURL(file);
+    }catch(e){
+      saveStatus.textContent = '画像のアップロードに失敗しました（通信・Storage設定を確認してください）';
+    }
   }
   document.getElementById('imageBtn').addEventListener('click', ()=> imageFileInput.click());
   imageFileInput.addEventListener('change', (e)=>{
