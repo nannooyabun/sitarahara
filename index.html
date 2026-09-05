@@ -23,6 +23,7 @@
   --border:rgba(255,255,255,0.08);
   --font-display:'Shippori Mincho',serif;
   --font-ui:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+  --reading-font-size:14.5px;
 }
 *{box-sizing:border-box;}
 html,body{height:100%;}
@@ -193,12 +194,12 @@ body{
 .toolbar.disabled{opacity:.35;pointer-events:none;}
 
 .editor-body{
-  min-height:340px;font-size:14.5px;line-height:1.85;color:var(--ink);
+  min-height:340px;font-size:var(--reading-font-size);line-height:1.85;color:var(--ink);
   outline:none;
 }
 .editor-body:empty::before{content:"作戦の内容をここに記入…（画像は貼り付け／ドラッグ＆ドロップ可）";color:#b4a888;}
-.editor-body h2{font-family:var(--font-display);font-size:19px;margin:18px 0 8px;color:#3a2f1e;}
-.editor-body h3{font-family:var(--font-display);font-size:16px;margin:14px 0 6px;color:#3a2f1e;}
+.editor-body h2{font-family:var(--font-display);font-size:1.31em;margin:18px 0 8px;color:#3a2f1e;}
+.editor-body h3{font-family:var(--font-display);font-size:1.1em;margin:14px 0 6px;color:#3a2f1e;}
 .editor-body blockquote{
   margin:10px 0;padding:6px 14px;border-left:3px solid var(--gold);
   background:rgba(199,154,68,0.08);color:#4a4230;
@@ -249,12 +250,34 @@ body{
   background:var(--vermillion);color:#fff2ee;font-size:12.5px;
   text-align:center;padding:8px 12px;flex-shrink:0;
 }
+
+.font-size-control{
+  position:fixed;right:18px;bottom:18px;z-index:30;
+  display:flex;align-items:center;gap:8px;
+  background:var(--bg-command-hi);border:1px solid var(--border);
+  border-radius:24px;padding:6px 12px;
+  box-shadow:0 6px 20px rgba(0,0,0,0.45);
+}
+.font-size-control[hidden]{display:none;}
+.fsc-btn{
+  border:none;background:transparent;color:#e7ddc7;
+  font-size:12.5px;font-weight:700;cursor:pointer;
+  width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-ui);
+}
+.fsc-btn:hover{background:rgba(255,255,255,0.12);}
+.font-size-control input[type=range]{
+  width:96px;accent-color:var(--gold);
+}
 @media (max-width:780px){
   .layout{flex-direction:column;}
   .sidebar{width:100%;max-height:34vh;border-right:none;border-bottom:1px solid var(--border);}
   .editor-pane{padding:16px;}
   .post-editor{padding:18px 16px 16px;}
   .locked-seal-big{width:44px;height:44px;font-size:18px;top:12px;right:14px;}
+  .font-size-control{right:12px;bottom:12px;padding:5px 10px;gap:6px;}
+  .font-size-control input[type=range]{width:64px;}
 }
 </style>
 </head>
@@ -347,6 +370,12 @@ body{
   </div>
 </div>
 
+<div id="fontSizeControl" class="font-size-control" hidden>
+  <button id="fontSizeDecBtn" class="fsc-btn" title="文字を小さく">A-</button>
+  <input id="fontSizeSlider" type="range" min="13" max="26" step="1" value="14" title="文字サイズ" />
+  <button id="fontSizeIncBtn" class="fsc-btn" title="文字を大きく">A+</button>
+</div>
+
 <div id="confirmModal" class="modal-overlay" hidden>
   <div class="modal-box">
     <p id="confirmMessage"></p>
@@ -411,6 +440,10 @@ const postsCol = collection(db, 'posts');
 (function(){
   const NAME_KEY = 'jinchu-my-name'; // 通常のWebサイトとして動くため localStorage を利用
   const LAST_POST_KEY = 'jinchu-last-post-id'; // 次回訪問時に前回開いていた投稿を復元するため
+  const FONT_SIZE_KEY = 'jinchu-font-size'; // 本文の文字サイズをブラウザに記憶するため
+  const MIN_FONT_SIZE = 13;
+  const MAX_FONT_SIZE = 26;
+  const DEFAULT_FONT_SIZE = 14.5;
 
   let posts = [];          // Firestoreからのローカルキャッシュ
   let currentId = null;
@@ -434,6 +467,10 @@ const postsCol = collection(db, 'posts');
   const deleteBtn = document.getElementById('deleteBtn');
   const fullscreenBtn = document.getElementById('fullscreenBtn');
   const appEl = document.getElementById('app');
+  const fontSizeControl = document.getElementById('fontSizeControl');
+  const fontSizeSlider = document.getElementById('fontSizeSlider');
+  const fontSizeDecBtn = document.getElementById('fontSizeDecBtn');
+  const fontSizeIncBtn = document.getElementById('fontSizeIncBtn');
   const lockedSealBig = document.getElementById('lockedSealBig');
   const imageFileInput = document.getElementById('imageFileInput');
   const UNLOCK_PASSPHRASE = 'nnnoyabun';
@@ -487,6 +524,18 @@ const postsCol = collection(db, 'posts');
     }catch(e){}
   }
 
+  function loadFontSize(){
+    try{
+      const v = parseFloat(localStorage.getItem(FONT_SIZE_KEY));
+      return (v >= MIN_FONT_SIZE && v <= MAX_FONT_SIZE) ? v : DEFAULT_FONT_SIZE;
+    }catch(e){ return DEFAULT_FONT_SIZE; }
+  }
+  function applyFontSize(size){
+    document.documentElement.style.setProperty('--reading-font-size', size + 'px');
+    fontSizeSlider.value = size;
+    try{ localStorage.setItem(FONT_SIZE_KEY, size); }catch(e){}
+  }
+
   // 変更をまとめてFirestoreへ送る（連続入力を1回にまとめる）
   function scheduleUpdate(partial){
     lastLocalEditAt = Date.now();
@@ -536,6 +585,7 @@ const postsCol = collection(db, 'posts');
     if(!p) return;
     noSelection.hidden = true;
     postEditor.hidden = false;
+    fontSizeControl.hidden = false;
     authorInput.value = p.authorName || authorInput.value;
     titleInput.value = p.title || '';
     editorBody.innerHTML = p.bodyHtml || '';
@@ -576,6 +626,7 @@ const postsCol = collection(db, 'posts');
       saveLastPostId(currentId);
       noSelection.hidden = true;
       postEditor.hidden = false;
+      fontSizeControl.hidden = false;
       titleInput.value = '';
       titleInput.readOnly = false;
       editorBody.innerHTML = '';
@@ -623,6 +674,7 @@ const postsCol = collection(db, 'posts');
       saveLastPostId(null);
       exitFullscreen();
       postEditor.hidden = true;
+      fontSizeControl.hidden = true;
       noSelection.hidden = false;
     });
   });
@@ -636,6 +688,7 @@ const postsCol = collection(db, 'posts');
       saveLastPostId(null);
       exitFullscreen();
       postEditor.hidden = true;
+      fontSizeControl.hidden = true;
       noSelection.hidden = false;
     });
   });
@@ -862,6 +915,22 @@ const postsCol = collection(db, 'posts');
     }
   });
 
+  // Font size control
+  let currentFontSize = loadFontSize();
+  applyFontSize(currentFontSize);
+  fontSizeSlider.addEventListener('input', ()=>{
+    currentFontSize = parseFloat(fontSizeSlider.value);
+    applyFontSize(currentFontSize);
+  });
+  fontSizeDecBtn.addEventListener('click', ()=>{
+    currentFontSize = Math.max(MIN_FONT_SIZE, currentFontSize - 1);
+    applyFontSize(currentFontSize);
+  });
+  fontSizeIncBtn.addEventListener('click', ()=>{
+    currentFontSize = Math.min(MAX_FONT_SIZE, currentFontSize + 1);
+    applyFontSize(currentFontSize);
+  });
+
   // Init
   authorInput.value = loadMyName();
   onSnapshot(query(postsCol, orderBy('updatedAt','desc')), (snapshot)=>{
@@ -882,6 +951,7 @@ const postsCol = collection(db, 'posts');
         saveLastPostId(null);
         exitFullscreen();
         postEditor.hidden = true;
+        fontSizeControl.hidden = true;
         noSelection.hidden = false;
       }
     }
