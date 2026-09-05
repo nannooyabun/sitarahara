@@ -80,6 +80,10 @@ body{
 .btn:disabled{opacity:.4;cursor:not-allowed;}
 
 .layout{flex:1;display:flex;min-height:0;}
+#app.fullscreen-mode .topbar,
+#app.fullscreen-mode .sidebar{
+  display:none;
+}
 .sidebar{
   width:290px;flex-shrink:0;
   border-right:1px solid var(--border);
@@ -289,6 +293,7 @@ body{
           <input id="authorInput" class="author-input" placeholder="投稿者名" />
           <span id="timestampLabel" class="timestamp-label"></span>
           <div class="editor-meta-actions">
+            <button id="fullscreenBtn" class="btn btn-ghost" title="この投稿を全画面表示">⛶ 全画面</button>
             <button id="lockBtn" class="btn btn-ghost">🔒 ロック</button>
             <button id="deleteBtn" class="btn btn-danger-ghost">削除</button>
           </div>
@@ -427,6 +432,8 @@ const postsCol = collection(db, 'posts');
   const saveStatus = document.getElementById('saveStatus');
   const lockBtn = document.getElementById('lockBtn');
   const deleteBtn = document.getElementById('deleteBtn');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
+  const appEl = document.getElementById('app');
   const lockedSealBig = document.getElementById('lockedSealBig');
   const imageFileInput = document.getElementById('imageFileInput');
   const UNLOCK_PASSPHRASE = 'nnnoyabun';
@@ -435,6 +442,15 @@ const postsCol = collection(db, 'posts');
   const unlockError = document.getElementById('unlockError');
   let unlockTargetId = null;
   const globalError = document.getElementById('globalError');
+
+  function exitFullscreen(){
+    appEl.classList.remove('fullscreen-mode');
+    fullscreenBtn.textContent = '⛶ 全画面';
+  }
+  fullscreenBtn.addEventListener('click', ()=>{
+    const isFullscreen = appEl.classList.toggle('fullscreen-mode');
+    fullscreenBtn.textContent = isFullscreen ? '✕ 閉じる' : '⛶ 全画面';
+  });
 
   function showGlobalError(msg){
     globalError.textContent = msg;
@@ -605,6 +621,7 @@ const postsCol = collection(db, 'posts');
       }
       currentId = null;
       saveLastPostId(null);
+      exitFullscreen();
       postEditor.hidden = true;
       noSelection.hidden = false;
     });
@@ -617,6 +634,7 @@ const postsCol = collection(db, 'posts');
       try{ await deleteDoc(doc(db,'posts',idToDelete)); }catch(e){}
       currentId = null;
       saveLastPostId(null);
+      exitFullscreen();
       postEditor.hidden = true;
       noSelection.hidden = false;
     });
@@ -862,6 +880,7 @@ const postsCol = collection(db, 'posts');
       else {
         currentId = null;
         saveLastPostId(null);
+        exitFullscreen();
         postEditor.hidden = true;
         noSelection.hidden = false;
       }
